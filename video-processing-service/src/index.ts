@@ -1,28 +1,55 @@
 import express = require("express");
-import ffmpeg = require("fluent-ffmpeg");
+import { convertVideo, deleteProcessedVideo, deleteRawVideo, downloadRawVideo, setupDirectories, uploadProcessedVideo } from "./storage";
+
+setupDirectories();
 
 const app = express();
 app.use(express.json());
 
 
-app.post('/process-video', (req, res) => {
-    const inputFilePath = req.body.inputFilePath;
-    const outputFilePath = req.body.outputFilePath;
+app.post('/process-video', async(req, res) => {
+    // Get the bucket and filename from the Cloud Pub/Sub message;
+  let data;
 
-    if(!inputFilePath || !outputFilePath){
-        res.status(400).send("Bad Request : Missing file path");
+  try{
+    const message = Buffer.from(req.body.message.data, 'base64').toString('utf-8');
+    data = JSON.parse(message);
+    if(!data.name){
+        throw new Error('Invalid message payload received');
+
     }
-    ffmpeg(inputFilePath)
-    .outputOptions("-vf","scale=-1:360") // scale to 360p
-    .on('end', () =>{
-        return res.status(200).send('Video processed successfully');
+  }catch(err){
+    console.error(err);
+    return res.status(400).send('Bad request : missing filename');
+  }
 
-    })
-    .on('error', (err) =>{
-        console.log(`An error occurred:${err.message}`);
-        res.status(500).send(`Internal Server Error: ${err.message}`);
-    })
-    .save(outputFilePath);
+  const inputFileName = data.name;
+  const outputFileName = `processed-${inputFileName}`;
+
+  await downloadRawVideo(inputFileName);
+
+try{
+    await convertVideo(inputFileName,outputFileName);
+}catch(error) {
+    await Promise.all([
+        deleteRawVideo(inputFileName),
+        deleteProcessedVideo(outputFileName)
+    ]);
+    
+    console.error(error);
+    return res.status(500).send('Internal Server Error : video processing failed');
+}
+
+
+  await uploadProcessedVideo(outputFileName);
+  
+  await Promise.all([
+    deleteRawVideo(inputFileName),
+    deleteProcessedVideo(outputFileName)
+]);
+
+return res.status(200).send('Processing finished Successfully');
+
 
 });
 
