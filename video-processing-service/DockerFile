@@ -1,0 +1,37 @@
+
+FROM node:18
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN apt-get update && apt-get install -y ffmpeg
+# RUN choco install ffmpeg-full
+
+RUN npm install 
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
+
+
+#production Statge
+
+# FROM node:18 
+
+# RUN choco install ffmpeg-full
+
+# WORKDIR /app
+
+# COPY package*.json ./
+
+# RUN npm install --only=production
+
+# COPY --from=builder /app/dist ./dist
+
+# EXPOSE 3000
+
+# CMD ["npm", "run" "serve"]
+
